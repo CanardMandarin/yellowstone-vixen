@@ -5,7 +5,7 @@ use bytesize::ByteSize;
 use clap::ValueEnum;
 use tokio::{sync::mpsc::Sender, task::JoinSet};
 use yellowstone_fumarole_client::{
-    proto::{CreateConsumerGroupRequest, InitialOffsetPolicy},
+    proto::{CreateConsumerGroupRequest, GetConsumerGroupInfoRequest, InitialOffsetPolicy},
     DragonsmouthAdapterSession, FumaroleClient, FumaroleSubscribeConfig,
 };
 pub use yellowstone_grpc_proto::tonic::codec::CompressionEncoding;
@@ -109,29 +109,32 @@ impl SourceTrait for YellowstoneFumaroleSource {
             .await
             .expect("failing to connect to fumarole");
 
-        let group_result = fumarole_client
-            .create_consumer_group(CreateConsumerGroupRequest {
+        let request = fumarole_client
+            .get_consumer_group_info(GetConsumerGroupInfoRequest {
                 consumer_group_name: subscriber_name.clone(),
-                initial_offset_policy: initial_offset_policy.into(),
-                // If the initial offset policy is "from-slot", this is the slot to start from.
-                // If not specified, the subscriber will start from the latest slot.
-                from_slot,
             })
             .await;
 
-        match group_result {
-            Ok(_) => (),
-            Err(status) => {
-                let code = status.code();
-                match code {
-                    Code::AlreadyExists => {
-                        tracing::warn!(
-                            "Fumarole consumer group: '{:?}' already existent",
-                            subscriber_name
-                        )
-                    },
-                    _ => panic!("Failed to create consumer group: {status:?}"),
+        match request {
+            Ok(consumer_group_info) => {
+                tracing::info!("Using existing consumer group: {:?}", consumer_group_info);
+            },
+            Err(_) => {
+                let request = CreateConsumerGroupRequest {
+                    consumer_group_name: subscriber_name.clone(),
+                    initial_offset_policy: initial_offset_policy.into(),
+                    // If the initial offset policy is "from-slot", this is the slot to start from.
+                    // If not specified, the subscriber will start from the latest slot.
+                    from_slot,
+                };
+
+                if let Err(status) = fumarole_client.create_consumer_group(request).await {
+                    match status.code() {
+                        _ => panic!("Failed to create consumer group: {status:?}"),
+                    }
                 }
+
+                tracing::info!("Created new consumer group: {:?}", subscriber_name);
             },
         }
 
