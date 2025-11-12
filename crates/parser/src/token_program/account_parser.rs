@@ -19,13 +19,23 @@ pub enum TokenProgramState {
 impl TokenProgramState {
     pub fn try_unpack(data_bytes: &[u8]) -> ParseResult<Self> {
         let acc = match data_bytes.len() {
-            Mint::LEN => Mint::unpack(data_bytes).map(Self::Mint).map_err(Into::into),
-            Account::LEN => Account::unpack(data_bytes)
-                .map(Self::TokenAccount)
-                .map_err(Into::into),
-            Multisig::LEN => Multisig::unpack(data_bytes)
-                .map(Self::Multisig)
-                .map_err(Into::into),
+            Mint::LEN | Account::LEN | Multisig::LEN => {
+                // Only perform the zeroed-check after length validation
+                if data_bytes.iter().all(|&b| b == 0) {
+                    return Err(ParseError::Filtered);
+                }
+
+                match data_bytes.len() {
+                    Mint::LEN => Mint::unpack(data_bytes).map(Self::Mint).map_err(Into::into),
+                    Account::LEN => Account::unpack(data_bytes)
+                        .map(Self::TokenAccount)
+                        .map_err(Into::into),
+                    Multisig::LEN => Multisig::unpack(data_bytes)
+                        .map(Self::Multisig)
+                        .map_err(Into::into),
+                    _ => unreachable!("Length already validated in outer match"),
+                }
+            }
             _ => Err(ParseError::from("Invalid Account data length".to_owned())),
         };
 
