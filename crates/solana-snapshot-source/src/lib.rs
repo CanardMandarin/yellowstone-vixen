@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs::File, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs::File,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -17,6 +22,7 @@ use yellowstone_vixen::{sources::SourceTrait, Error as VixenError};
 use yellowstone_vixen_core::{Filters, Pubkey};
 use zstd::Decoder;
 
+#[derive(Debug, Clone)]
 pub struct AccountFile(PathBuf, usize);
 
 pub struct SolanaSnapshot {
@@ -66,6 +72,41 @@ impl SolanaSnapshot {
             slot,
             _temp_dir: temp_dir,
         })
+    }
+
+    /// Returns a read-only view of the unpacked account files.
+    pub fn account_files(&self) -> &[AccountFile] { &self.accounts }
+
+    /// Counts the total number of accounts across every account file in the snapshot.
+    pub fn count_accounts(&self) -> Result<usize, VixenError> {
+        self.accounts.iter().try_fold(0usize, |acc, file| {
+            let file_count = file.account_count()?;
+            Ok(acc + file_count)
+        })
+    }
+}
+
+impl AccountFile {
+    pub fn path(&self) -> &Path { &self.0 }
+
+    pub fn account_count(&self) -> Result<usize, VixenError> {
+        let (accounts, _) = AccountsFile::new_from_file(
+            self.0.clone(),
+            self.1,
+            solana_accounts_db::accounts_file::StorageAccess::default(),
+        )
+        .map_err(|err| {
+            VixenError::Other(
+                format!("Failed to read accounts file {}: {err}", self.0.display()).into(),
+            )
+        })?;
+
+        let mut count = 0usize;
+        accounts.scan_accounts(|_, _| {
+            count += 1;
+        });
+
+        Ok(count)
     }
 }
 
