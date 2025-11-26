@@ -8,6 +8,10 @@ repository.workspace = true
 authors.workspace = true
 readme = "./../../README.md"
 
+[[bin]]
+name = "snapshot-account-counter"
+path = "src/bin/count_accounts.rs"
+
 [dependencies]
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal"] }

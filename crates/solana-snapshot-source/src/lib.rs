@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
     path::{Path, PathBuf},
     sync::Arc,
@@ -90,6 +90,7 @@ impl AccountFile {
     pub fn path(&self) -> &Path { &self.0 }
 
     pub fn account_count(&self) -> Result<usize, VixenError> {
+        let mut hashet_accounts = HashSet::new();
         let (accounts, _) = AccountsFile::new_from_file(
             self.0.clone(),
             self.1,
@@ -101,12 +102,11 @@ impl AccountFile {
             )
         })?;
 
-        let mut count = 0usize;
-        accounts.scan_accounts(|_, _| {
-            count += 1;
+        accounts.scan_accounts(|_size, account| {
+            hashet_accounts.insert(account.pubkey().to_bytes().to_vec());
         });
 
-        Ok(count)
+        Ok(hashet_accounts.len())
     }
 }
 
